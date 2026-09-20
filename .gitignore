@@ -1,0 +1,73 @@
+# Unity-generated folders (relative to the project root)
+/[Ll]ibrary/
+/[Tt]emp/
+/[Oo]bj/
+/[Ll]ogs/
+/[Uu]ser[Ss]ettings/
+/[Bb]uild/
+/[Bb]uilds/
+/[Mm]emoryCaptures/
+/[Rr]ecordings/
+
+# Unity caches and diagnostic output
+/.cache/
+/.utmp/
+/[Cc]rash[Rr]eports/
+/sysinfo.txt
+/crashlytics-build.properties
+*.log
+
+# IDE-generated projects, local settings, and caches
+.vs/
+.idea/
+.vscode/
+.vsconfig
+.gradle/
+.consulo/
+ExportedObj/
+*.csproj
+*.unityproj
+*.sln
+*.slnx
+*.suo
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.opendb
+*.VC.db
+*.DotSettings.user
+
+# Generated debug symbols and their Unity metadata
+*.pdb
+*.mdb
+*.pidb.meta
+*.pdb.meta
+*.mdb.meta
+
+# Unity-generated IDE integration and Addressables output
+/[Aa]ssets/Plugins/Editor/JetBrains*
+/[Aa]ssets/AddressableAssetsData/*/*.bin*
+/[Aa]ssets/AddressableAssetsData/link.xml*
+/[Aa]ssets/StreamingAssets/aa.meta
+/[Aa]ssets/StreamingAssets/aa/
+/[Ss]erver[Dd]ata/
+
+# Player build artifacts and generated diagnostic folders
+*.apk
+*.aab
+*.unitypackage
+*.app/
+*_BackUpThisFolder_ButDontShipItWithYourGame/
+*_BurstDebugInformation_DoNotShip/
+
+# Operating-system metadata
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+Thumbs.db.meta
+Desktop.ini
+
+# Keep source assets and their .meta files, Packages, and ProjectSettings tracked.
