@@ -3,6 +3,7 @@ using UnityEngine.InputSystem;
 
 namespace LifeSimulator
 {
+    [DefaultExecutionOrder(-100)]
     public sealed class ThirdPersonCamera : MonoBehaviour
     {
         [SerializeField] private Transform target;
@@ -55,7 +56,7 @@ namespace LifeSimulator
             Cursor.visible = !locked;
         }
 
-        private void LateUpdate()
+        private void Update()
         {
             bool captureChanged = false;
             if (Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame)
@@ -78,7 +79,15 @@ namespace LifeSimulator
                 pitch = Mathf.Clamp(pitch - delta.y, minimumPitch, maximumPitch);
             }
 
+            // Apply yaw before the player's Update so camera-relative movement samples
+            // this frame's orientation while WASD is held.
+            transform.rotation = Quaternion.Euler(pitch, yaw, 0f);
+        }
+
+        private void LateUpdate()
+        {
             Quaternion rotation = Quaternion.Euler(pitch, yaw, 0f);
+
             Vector3 pivot = target.position + pivotOffset;
             Vector3 backwards = rotation * Vector3.back;
             float cameraDistance = distance;
