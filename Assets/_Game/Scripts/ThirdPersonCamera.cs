@@ -17,6 +17,33 @@ namespace LifeSimulator
         private float yaw;
         private float pitch = 20f;
         private InputAction look;
+        private Transform followOverride;
+        private Vector3 overridePivot;
+        private float overrideDistance;
+        private float savedYaw;
+        private float savedPitch;
+        private float previousFollowYaw;
+
+        public void BeginFollowOverride(Transform follow, Vector3 pivot, float followDistance, float headingOffset)
+        {
+            if (followOverride != null) return;
+            savedYaw = yaw;
+            savedPitch = pitch;
+            followOverride = follow;
+            overridePivot = pivot;
+            overrideDistance = followDistance;
+            previousFollowYaw = follow.eulerAngles.y;
+            yaw = previousFollowYaw + headingOffset;
+            pitch = 18f;
+        }
+
+        public void EndFollowOverride()
+        {
+            followOverride = null;
+            yaw = savedYaw;
+            pitch = savedPitch;
+            transform.rotation = Quaternion.Euler(pitch, yaw, 0f);
+        }
 
         private void Awake()
         {
@@ -58,6 +85,12 @@ namespace LifeSimulator
 
         private void Update()
         {
+            if (followOverride != null)
+            {
+                float heading = followOverride.eulerAngles.y;
+                yaw += Mathf.DeltaAngle(previousFollowYaw, heading);
+                previousFollowYaw = heading;
+            }
             bool captureChanged = false;
             if (Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame)
             {
@@ -88,10 +121,19 @@ namespace LifeSimulator
         {
             Quaternion rotation = Quaternion.Euler(pitch, yaw, 0f);
 
-            Vector3 pivot = target.position + pivotOffset;
+            Vector3 pivot = followOverride != null ? followOverride.position + overridePivot : target.position + pivotOffset;
             Vector3 backwards = rotation * Vector3.back;
-            float cameraDistance = distance;
-            if (Physics.SphereCast(pivot, 0.2f, backwards, out RaycastHit hit, distance,
+            float cameraDistance = followOverride != null ? overrideDistance : distance;
+            if (followOverride != null)
+            {
+                foreach (RaycastHit obstruction in Physics.SphereCastAll(pivot, 0.2f, backwards,
+                             cameraDistance, obstructionMask, QueryTriggerInteraction.Ignore))
+                {
+                    if (!obstruction.transform.IsChildOf(followOverride))
+                        cameraDistance = Mathf.Min(cameraDistance, Mathf.Max(0f, obstruction.distance - 0.05f));
+                }
+            }
+            else if (Physics.SphereCast(pivot, 0.2f, backwards, out RaycastHit hit, distance,
                     obstructionMask, QueryTriggerInteraction.Ignore))
                 cameraDistance = Mathf.Max(0f, hit.distance - 0.05f);
 

@@ -33,8 +33,8 @@ Manual checks:
    Check cursor release and that held movement does not persist after focus loss.
 7. Check the Unity Console for errors.
 
-The ground is a finite 40 x 40 metre plane. Walking off the outer edge causes a
-fall; stop and restart Play to reset. There is no respawn system in this prototype.
+The ground is a 120 x 100 metre plane with boundary walls and a marked driving
+apron south of the original warehouse/dealership area. There is no respawn system.
 The existing SampleScene, build scene list, packages, and project settings are
 unchanged. Open this test scene directly to run it.
 
@@ -139,8 +139,8 @@ Manual warehouse checks:
 The dealership is at world (13, 0, 4), east/right of the starting area. Its yellow
 purchase terminal is at (13, 0.8, 0.7), facing south toward the approach from spawn.
 The starter car costs exactly $300; warehouse deliveries still pay $100 each.
-The green YOUR CAR parking bay is at (13, 0, -13). Cars are stationary props made
-from cubes, with no Rigidbody, driving, entry, or inventory functionality.
+The green YOUR CAR parking bay is at (13, 0, -13). The cube-built starter car now
+supports owner-only entry, arcade driving, and exit, as described below.
 
 `CarPurchase` implements the existing `IInteractable` on the purchase terminal.
 Each instance represents one specific vehicle and holds a read-only runtime
@@ -215,3 +215,146 @@ unused development setting CS0169 warning in the release configuration). Scene r
 Unity batch execution exited 198: No valid Unity Editor license found. Therefore
 the integration checks and manual Play/visual checks have NOT run successfully;
 activate the local Editor license and run the checks above before accepting them.
+
+## First vehicle prototype: enter, drive, exit
+
+Buy the starter car, walk to it in YOUR CAR parking, aim at the body, and press
+E — Enter Vehicle. The same player switches to vehicle mode. W accelerates, S
+brakes then reverses, A/D steer, mouse orbits the chase camera, and E exits. Escape
+releases the mouse and suspends driving input; click Game view to resume. The car
+coasts when input is released. Forward speed is capped at 14 m/s, reverse at 5 m/s.
+Steering fades out near zero speed. There is no speedometer.
+
+Driver state is control only and never alters physical state: leaving a moving car
+keeps its linear velocity, angular velocity and momentum, and the unoccupied car
+rolls on until rolling resistance and drag stop it. The Rigidbody is never made
+kinematic. Because there is no player injury or ragdoll system yet, exiting is
+temporarily refused above `VehicleSeat > Safe Exit Speed` (default 2 m/s) with
+"Too fast to exit". That gate is one field plus one check in `PlayerVehicleMode.TryExit`;
+delete both when bailing out of a moving car becomes a survivable, injurious action.
+The internal `RestoreOnFoot` cleanup path deliberately ignores the gate so a disabled
+vehicle can never strand the player.
+
+The headlights of the original primitive face local -Z; vehicle forward and the
+chase camera respect that model orientation. No visual assets were imported.
+The road apron spans x=-45..55 and z=-44..-10, with dashes along z=-27. The rest
+of the expanded ground is also drivable. Boundary walls are at x=+/-58 and z=+/-48.
+Existing warehouse, obstacles, dealership, purchase terminal, and parking positions
+are preserved. Nine visual-part colliders were replaced by one root BoxCollider
+and Rigidbody; car visuals move together under the independent car root.
+Flat painted decals (nine road centre dashes and the two parking bay lines) are
+render-only: their box colliders were removed because their surfaces sat above the
+car's underside and caught the hull. The car's own collider keeps a runtime
+zero-friction PhysicsMaterial: the single hull stands in for four tyres, whose grip
+and rolling resistance are modelled in script, so PhysX box friction would both
+double-count that model and, at 900 kg, statically pin the car against its own
+drive forces. Consequently the car has no parking brake and will roll on a slope.
+
+Focused components and state:
+
+- `VehicleSeat` implements the existing `IInteractable` and references the existing
+  `CarPurchase`. It checks `IsOwnedBy` on entry and records one explicit `Driver`.
+  Unoccupied -> Driven -> Unoccupied is represented by that driver reference.
+  The display car reports Vehicle not purchased and refuses entry; a different
+  player receives Only the owner can drive this car. No second ownership system.
+- `PlayerVehicleMode` lives on the existing player. It saves each renderer/collider
+  enabled state, hides the character, disables all its colliders (including the
+  CharacterController), and suspends ThirdPersonPlayer and PlayerInteraction.
+  It owns driving/exit input and follows the vehicle while hidden. It never creates
+  or destroys a player. Entry during an active warehouse shift is refused with
+  feedback, preserving that shift and any carried box; finish the delivery first.
+- `ArcadeVehicle` owns Rigidbody motion in FixedUpdate. It applies accelerations
+  rather than assigning velocity, so PhysX keeps ownership of momentum, collision
+  response and slopes. Per grounded step it applies capped lateral tyre grip,
+  rolling resistance plus a quadratic drag term, and — only while driven — engine
+  or braking force and a torque towards a speed-scaled yaw rate. A ground probe
+  returns the surface normal, so drive forces follow slopes and nothing is applied
+  while airborne. Pitch and roll stay constrained for stability in place of
+  suspension; yaw is free, so a collision can still spin the car. Collision
+  detection is ContinuousDynamic rather than speculative, because a speculative
+  solver slows the body before contact and understates impact severity. This is
+  not a suspension, drivetrain or tyre-slip model.
+- `ThirdPersonCamera` has a temporary follow override. While driving it uses a
+  higher pivot, a 7m chase distance, heading-follow plus mouse orbit, and obstruction
+  checks that ignore the driven car itself. Exit restores the prior on-foot yaw,
+  pitch, target, distance and pivot settings. Cursor behavior stays with this camera.
+
+E exit checks ground, slope, full character-capsule clearance, and a clear path
+beside both doors, then rear-side alternatives. It never selects a point directly
+in front of the car. If all candidates are blocked, it keeps driving mode and asks
+the player to move to a clear area. A successful exit stops the car, restores all
+player render/collider states, walking and interaction, and the on-foot camera.
+Exit runs after generic interaction, ignores the entry frame, and has a 0.25s
+re-entry cooldown so the same E press cannot switch back. Duplicate claims/exits
+are rejected. Disabling either participant restores the player; if no nearby exit
+exists during this cleanup, it uses the last on-foot entry position. There is no
+networking, saving, damage, fuel, vehicle inventory or generic vehicle framework.
+
+Manual validation:
+
+1. Open PrototypeMovement. Keep PlayerWallet > Development Starting Balance at 0.
+   Enter Play, capture the mouse, approach the display car at (13, 0, 4), and aim
+   at its body. E must not enter, move it, or alter money; it is still unpurchased.
+2. Buy via three $100 warehouse deliveries, or stop Play, set Development Starting
+   Balance to 300, and restart. The terminal at (13, 0.8, 0.7) still spends exactly
+   $300 once and moves the car to (13, 0, -13). Confirm SOLD and OWNED indicators.
+3. Walk beside the owned car, aim at its body within interaction reach, and press
+   E — Enter Vehicle. Confirm the player disappears, the camera changes to a
+   higher/longer view, and E — Exit Vehicle appears. In Play-mode Inspector verify
+   VehicleSeat.Driver references PlayerVehicleMode on Player, ThirdPersonPlayer
+   and PlayerInteraction are disabled, and player colliders/renderers are disabled.
+4. Hold W: acceleration should build gradually. Drive out of the bay into the open
+   apron to the south, keeping clear of the delivery station at (6, 0, -10).
+   Hold S while moving: brake, stop, then reverse more slowly. Release W/S: coast
+   to a stop. Hold A/D at rest: no spin. While moving, A/D should steer in both
+   directions; backing up reverses the steering response. Use a long straight to
+   assess maximum speed. Walls around the outer ground should contain the car.
+5. Drive into an existing building or a boundary wall: the hull must stop instead
+   of passing through. Steer/reverse away. Confirm the car remains upright and
+   grounded. Mouse-orbit near obstacles to check chase-camera obstruction. Escape
+   releases the cursor and removes throttle; click resumes input without a jump.
+6. In an open area, press E. The car must stop. The same Player must appear beside
+   it, walking/collision/visibility restored, with the previous on-foot camera
+   orbit. WASD must move only the character. Press E once while driving and hold:
+   no immediate re-entry. Release, wait over 0.25s, aim at the car, and press again.
+   Repeat entry/exit several times; there must still be one player and one driver.
+7. Park tight to a wall and exit: choose the clear side. For a fully blocked test,
+   place temporary cubes along both sides of the car during Play, covering door
+   and rear-side points (local x=+/-2.25, z=0..1.5). E must report Exit blocked and
+   preserve vehicle mode. Remove the cubes or move to open space, then exit.
+8. Non-owner check: before entering, duplicate Player during Play and name it Other
+   Player. Disable ThirdPersonPlayer and PlayerInteraction on the original, move
+   Other Player beside the car, and set Main Camera's Target to Other Player.
+   Keep Other Player's interaction/movement enabled, aim at the car and press E.
+   It must refuse entry and leave VehicleSeat.Driver empty. Use a fresh Play run
+   afterwards to restore the original references. The automated check below also
+   verifies this gate directly with a distinct player object.
+9. Finish another warehouse shift after driving/exiting: pick up, carry, deliver,
+   objective updates and $100 payment should still work. Try entering during an
+   active shift: it should ask you to finish the shift and leave the job intact.
+   The sold dealership must still reject another purchase without spending money.
+10. While driving in Play, disable VehicleSeat, ArcadeVehicle, or PlayerVehicleMode
+    one at a time; control/visibility should return to the player and the vehicle
+    should stop. Re-enable before continuing. Check the Unity Console throughout.
+11. Stop Play, restore Development Starting Balance to 0, and restart: the car is
+    unpurchased, the player starts on foot with $0, and the original job loop works.
+
+Repeatable validation: outside Play choose Tools > Life Simulator > Validate vehicle
+(reopens scene), or run Unity in batch mode with -executeMethod
+LifeSimulator.Editor.VehiclePrototypeValidation.Validate. This first runs dealership
+regressions, then checks entry gates, driver state, disabled walking/collisions,
+input bindings, camera override/restoration, deterministic Rigidbody simulation
+(acceleration, forward/reverse limits, coasting, steering, wall collision), blocked
+exit, restored player state, repeated calls, and warehouse payment after driving.
+It reopens the saved scene to discard every test mutation. Save other scene work
+first and keep the scene's development starting balance at 0. These component and
+physics checks do not replace the manual Game-view input and camera-feel checks.
+
+This suite now runs clean: 47 of 47 checks pass under Unity 6000.0.84f1 batch mode
+(exit code 0), covering the dealership/economy regressions and the vehicle checks.
+It also covers momentum after control removal, unoccupied rolling and coasting to
+rest, the temporary safe-exit gate, cornering slip, and that impact severity scales
+with speed. A future damage component needs no plumbing from these scripts: Unity
+delivers OnCollisionEnter to every MonoBehaviour on the car, so it can read
+Collision.relativeVelocity, impulse, contact point and normal directly. That is why
+no impact event was added here.
