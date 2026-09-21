@@ -54,6 +54,9 @@ namespace LifeSimulator.Editor
             }
             return peak;
         }
+        // Not every component defines Awake; a missing one is not an error.
+        private static void AwakeIfPresent(Component component) => component.GetType()
+            .GetMethod("Awake", BindingFlags.Instance | BindingFlags.NonPublic)?.Invoke(component, null);
         private static void Step(ArcadeVehicle motor, Vector2 input, int frames)
         {
             Call(motor, "SetInput", input);
@@ -71,8 +74,7 @@ namespace LifeSimulator.Editor
             SimulationMode previousSimulation = Physics.simulationMode;
             try
             {
-                // Includes the existing three-delivery economy/ownership checks.
-                DealershipPrototype.Validate();
+                // Job and economy regressions live in JobValidation; this suite owns the vehicle.
                 EditorSceneManager.OpenScene(ScenePath);
                 Physics.simulationMode = SimulationMode.Script;
                 var player = UnityEngine.Object.FindFirstObjectByType<PlayerInteraction>();
@@ -86,24 +88,32 @@ namespace LifeSimulator.Editor
                 var wallet = player.GetComponent<PlayerWallet>();
                 var purchase = seat.Ownership;
                 foreach (Component component in new Component[] { player, movement, camera, wallet,
-                             player.GetComponent<WarehouseTask>(), motor, seat, mode }) Call(component, "Awake");
+                             player.GetComponent<PlayerCarry>(), player.GetComponent<PlayerEmployment>(),
+                             motor, seat, mode }) AwakeIfPresent(component);
                 player.transform.position = seat.transform.position + Vector3.right * 2.3f;
                 seat.Interact(player);
                 Check(!mode.IsDriving && seat.Driver == null && !motor.IsDriven, "Unpurchased car rejects entry and is left undriven");
-                wallet.TryAddMoney(300);
+                Check(purchase.Price == 2000 && ((TextMesh)Field(purchase, "saleSign")).text.Contains("$2,000"),
+                    "Starter car price and dealership sign both show $2,000");
+                wallet.TryAddMoney(purchase.Price);
                 purchase.Interact(player);
-                Check(wallet.Balance == 0 && purchase.IsOwnedBy(player), "Purchase still costs $300 and retains the same owner");
+                Check(purchase.Price == 2000 && wallet.Balance == 0 && purchase.IsOwnedBy(player), "Purchase costs $2,000 and retains the same owner");
                 var other = UnityEngine.Object.Instantiate(player.gameObject);
                 other.name = "Validation Other Player";
                 seat.Interact(other.GetComponent<PlayerInteraction>());
                 Check(seat.Driver == null && !other.GetComponent<PlayerVehicleMode>().IsDriving, "A different player cannot enter an owned car");
                 UnityEngine.Object.DestroyImmediate(other);
                 player.transform.position = seat.transform.position + Vector3.right * 2.3f;
-                var workplace = UnityEngine.Object.FindFirstObjectByType<Workplace>();
-                workplace.Interact(player);
+                // Carrying something bulky is a physical reason not to drive; being clocked in is not.
+                var carry = player.GetComponent<PlayerCarry>();
+                var spareBox = UnityEngine.Object.Instantiate(
+                    AssetDatabase.LoadAssetAtPath<GameObject>("Assets/_Game/Prefabs/WarehouseBox.prefab"));
+                Call(spareBox.GetComponent<CarryableItem>(), "Awake");
+                carry.TryPickUp(spareBox.GetComponent<CarryableItem>());
                 seat.Interact(player);
-                Check(!mode.IsDriving && player.GetComponent<WarehouseTask>().HasActiveShift, "Entry during warehouse work preserves the active shift");
-                player.GetComponent<WarehouseTask>().CancelShift();
+                Check(!mode.IsDriving && carry.IsCarrying, "Entry while carrying a box is refused");
+                carry.Release();
+                UnityEngine.Object.DestroyImmediate(spareBox);
                 float oldYaw = (float)Field(camera, "yaw");
                 float oldPitch = (float)Field(camera, "pitch");
                 seat.Interact(player);
@@ -200,10 +210,8 @@ namespace LifeSimulator.Editor
                     && (float)Field(camera, "pitch") == oldPitch, "On-foot camera settings and orbit are restored");
                 Check(Mathf.Abs(player.transform.position.x - body.position.x) > 2f, "Player exits beside the vehicle");
                 Check(!mode.TryExit() && !mode.TryEnter(seat), "Repeated exit and immediate re-entry are rejected");
-                workplace.Interact(player);
-                UnityEngine.Object.FindFirstObjectByType<WarehouseBox>(FindObjectsInactive.Include).Interact(player);
-                UnityEngine.Object.FindFirstObjectByType<WarehouseDelivery>().Interact(player);
-                Check(wallet.Balance == 100, "Warehouse pays $100 after driving and exiting");
+                Check(!carry.IsCarrying && carry.CarryPoint != null,
+                    "Carrying is available again after driving and exiting");
                 Debug.Log("VEHICLE VALIDATION PASSED: component and physics simulation. Manual Game-view input/camera checks still required.");
             }
             finally

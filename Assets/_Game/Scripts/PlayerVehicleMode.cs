@@ -46,10 +46,11 @@ namespace LifeSimulator
                 || !character.enabled || viewCamera == null || !viewCamera.isActiveAndEnabled
                 || interactionUI == null || (transform.position - seat.transform.position).sqrMagnitude > 25f)
                 return false;
-            // A carried box must never become an invisible passenger or silently lose its shift.
-            if (TryGetComponent(out WarehouseTask task) && task.HasActiveShift)
+            // A carried box must never become an invisible passenger. Being clocked in does not
+            // block driving: leaving work early is the player's decision, and it costs them wages.
+            if (TryGetComponent(out PlayerCarry carry) && carry.IsCarrying)
             {
-                interaction.ShowFeedback("Finish your warehouse shift before driving");
+                interaction.ShowFeedback("Put the box down before driving");
                 return false;
             }
             if (!seat.Claim(this)) return false;

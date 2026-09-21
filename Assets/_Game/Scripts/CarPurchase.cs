@@ -4,7 +4,10 @@ namespace LifeSimulator
 {
     public sealed class CarPurchase : MonoBehaviour, IInteractable
     {
-        public const int Price = 300;
+        // TEMPORARY prototype balancing value. Serialized rather than const so it can be
+        // tuned per vehicle without recompiling, and so other assemblies do not bake it in.
+        [SerializeField, Min(1)] private int price = 2000;
+        public int Price => price;
         [SerializeField] private Transform vehicle;
         [SerializeField] private TextMesh saleSign;
         [SerializeField] private GameObject ownedIndicator;
@@ -14,7 +17,7 @@ namespace LifeSimulator
         private bool sold;
         private bool purchasing;
         public bool IsOwnedBy(PlayerInteraction player) => sold && player != null && Owner == player;
-        public string Prompt => sold ? "Starter Car — SOLD" : "Buy Starter Car ($300)";
+        public string Prompt => sold ? "Starter Car — SOLD" : "Buy Starter Car ($" + price.ToString("N0") + ")";
 
         public void Interact(PlayerInteraction player)
         {

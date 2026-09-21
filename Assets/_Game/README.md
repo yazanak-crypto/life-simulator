@@ -358,3 +358,84 @@ with speed. A future damage component needs no plumbing from these scripts: Unit
 delivers OnCollisionEnter to every MonoBehaviour on the car, so it can read
 Collision.relativeVelocity, impulse, contact point and normal directly. That is why
 no impact event was added here.
+
+## Gameplay slice v0.1: time, commute and a scheduled warehouse shift
+
+The loop is: wake at home at 6:00 AM, walk the street east past the used-car lot,
+clock in at the warehouse, work a series of physical orders, clock out and get paid
+for the hours worked. The starter car is a long-term goal, not a first-shift reward.
+
+### Time
+
+`GameClock` is the only source of in-game time. It is a plain scene component, not a
+singleton or static, because multiplayer will make time server-authoritative. Consumers
+hold a serialized reference or subscribe to `MinuteTick`; nothing looks time up globally.
+Compression defaults to 60 (one real second is one in-game minute, so an in-game day
+takes 24 real minutes) and is a serialized field. Nothing assumes that value: every
+system works in in-game minutes. `MinuteTick` is raised at most once per frame, so a
+large jump raises it once and consumers compare absolute times rather than count ticks.
+`ClockUI` mirrors `BalanceUI`: a serialized source plus a Text.
+
+### Work
+
+`WorkSchedule` is serialized data only (title, start/end hour, early window, hourly wage)
+so a second job is simply a second `JobSite`. `JobSite` owns the schedule and the wage
+rules and is the only thing that pays money. `TimeClockTerminal` is the physical punch
+clock and is deliberately thin. `PlayerEmployment` holds per-player state and no rules.
+
+Wages accrue from the later of clock-in and the scheduled start, to the earliest of
+clock-out, the scheduled end, and the moment the shift's orders are finished. Arriving
+early earns nothing extra; arriving late costs the missed minutes; finishing the work
+stops the wage clock, so there is no reason to idle and no busywork was invented to fill
+the remaining hours. The reward for working efficiently is the rest of the day.
+
+### Orders
+
+`ShiftAssignments` composes scene-tagged `WarehouseRack` and `WarehouseDropOff` objects at
+runtime: adding a rack or a destination is all that is needed for it to join the pool, so
+orders vary without hand-authoring each one. 16 racks across aisles A-D and 4 destinations
+give 64 distinct orders from zero authored content. `Assignment` is a plain C# object, not
+a quest framework: one order, one box, one destination, one state.
+
+Each order spawns its own `WarehouseBox` prefab instance and destroys it on delivery. A
+single shared scene box would break the moment two players worked the same warehouse.
+`PlayerCarry` and `CarryableItem` are job-agnostic, so boxes never generate money and the
+carry mechanic is reusable. Orders per shift default to 6 and are configurable; tune by
+playing rather than by filling a timer.
+
+### District
+
+One street runs the length of the district with home at one end and the warehouse at the
+other. Measured distances (`Tools > Life Simulator > Report district layout`):
+
+| Route | Metres | At 5 m/s | At a future 2 m/s walk |
+|---|---|---|---|
+| Home to dealership | 133 | 27 s | 67 s |
+| Dealership to time clock | 86 | 17 s | 43 s |
+| Home to time clock | 219 | 44 s | 110 s |
+
+The distances are deliberately sized against a future realistic walking speed rather than
+the current 5 m/s, so slowing the player later does not make the commute painful. The
+used-car lot sits on the commute: the player passes the $2,000 car twice a day.
+
+### Temporary balancing values
+
+`$14/hour`, 6 orders per shift, a `$2,000` starter car and 60x compression are all
+prototype numbers. The car price is a serialized field rather than a const so it can be
+tuned per vehicle. The player still starts at `$0`.
+
+### Development overrides
+
+`DevelopmentOverrides` is editor and development-build only and drives the same public
+entry points the player uses, so no shortcut can reach a state normal play cannot.
+Start-up: starting money, grant car (through the real purchase), skip to shift start,
+compression override. Hotkeys: F1 advance one hour, F2 skip to shift start, F3 force
+clock out, F4 complete the current order.
+
+### Validation
+
+`Tools > Life Simulator > Validate everything` runs clock, job and vehicle suites:
+83 checks pass under Unity 6000.0.84f1 batch mode (exit code 0) via
+`-executeMethod LifeSimulator.Editor.PrototypeValidation.ValidateAll`.
+The world is rebuilt from `Tools > Life Simulator > Build district`, which is reproducible
+and keeps hand-edited scene YAML out of the milestone.
