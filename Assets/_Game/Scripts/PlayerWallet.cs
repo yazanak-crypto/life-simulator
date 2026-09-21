@@ -5,7 +5,17 @@ namespace LifeSimulator
 {
     public sealed class PlayerWallet : MonoBehaviour
     {
-        // Whole dollars for V0.1. Runtime-only state starts at zero for each player.
+        [SerializeField, Min(0), Tooltip("Editor/development builds only. Leave at zero for normal gameplay.")]
+        private int developmentStartingBalance;
+
+        private void Awake()
+        {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            TryAddMoney(Math.Max(0, developmentStartingBalance));
+#endif
+        }
+
+        // Whole dollars for V0.1. Runtime-only state belongs to this player.
         public long Balance { get; private set; }
         public event Action<long> BalanceChanged;
 

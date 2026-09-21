@@ -133,3 +133,85 @@ Manual warehouse checks:
    and task should clear without payment. Re-enable and start a fresh shift.
 9. Verify Escape/focus switching, movement, gravity, camera obstruction, and
    interaction prompts still work. Check Console for errors. Restart Play: $0.
+
+## Starter car dealership
+
+The dealership is at world (13, 0, 4), east/right of the starting area. Its yellow
+purchase terminal is at (13, 0.8, 0.7), facing south toward the approach from spawn.
+The starter car costs exactly $300; warehouse deliveries still pay $100 each.
+The green YOUR CAR parking bay is at (13, 0, -13). Cars are stationary props made
+from cubes, with no Rigidbody, driving, entry, or inventory functionality.
+
+`CarPurchase` implements the existing `IInteractable` on the purchase terminal.
+Each instance represents one specific vehicle and holds a read-only runtime
+`Owner` reference to the purchasing `PlayerInteraction`. `IsOwnedBy(player)`
+checks that exact reference. A per-car sold flag prevents resale even after its
+owner object is destroyed; it is not a global player ownership flag. A transaction
+guard prevents a second charge through synchronous wallet event callbacks.
+Spending uses only `PlayerWallet.TrySpendMoney(300)`, preserving the normal HUD
+event flow. On success the same car moves to that player's assigned `PlayerParking`
+spot, its OWNED sign activates, and the terminal changes to SOLD. Other players
+cannot claim it. The parking Transform lives in the world, outside the player
+hierarchy, so walking does not drag the car along.
+
+This is deliberately runtime-only, one car and one parking spot per player in
+this scene. Additional assets can have independent ownership records; persistent
+player/asset IDs and allocation of additional parking spots are future work.
+No shared database or inventory is introduced.
+
+For fast development tests, select Player, set PlayerWallet > Development Starting
+Balance to 300 (or 500), then enter Play. The Inspector value defaults to 0 in the
+saved scene and is applied only with UNITY_EDITOR or DEVELOPMENT_BUILD. Release
+builds ignore it. Change it before entering Play, and restore 0 before saving.
+Restarting Play resets purchases and ownership.
+
+Manual purchase checks (Unity license required):
+
+1. Open PrototypeMovement, select Player, confirm Development Starting Balance is
+   0, and press Play. Click Game view. Confirm Balance: $0.
+2. Walk east/right to the dealership terminal at (13, 0.8, 0.7). Approach its
+   south-facing yellow front, aim at it within 2.5m, and verify the prompt reads
+   E — Buy Starter Car ($300). Press E. Expect Not enough money, $0 unchanged,
+   the car still on display, and no OWNED indicator.
+3. Complete three warehouse shifts using the earlier steps: terminal (0, 1, 1.5),
+   pickup (-6, 0, -1.5), delivery (6, 0, -10). Confirm $100, $200, then $300.
+   Try buying after each of the first two deliveries; the balance must not change.
+4. With $300, return to the dealership and press E. Expect Starter Car purchased!,
+   Balance: $0, terminal SOLD, and the display car gone. Walk south to (13, 0, -13):
+   the same car should be in YOUR CAR parking, facing north with OWNED above it.
+5. Return to the sold terminal and press E repeatedly. Expect You already own this
+   car and no charge or additional car. Finish another warehouse shift and confirm
+   the normal objective flow and a further $100 payment still work.
+6. Stop Play. Set Development Starting Balance to 500, restart, and buy: expect
+   exactly $200 remaining. Try again: still $200 and only one car. Stop Play and
+   restore Development Starting Balance to 0.
+7. For a second-player check in Play, duplicate Player before buying. Disable the
+   duplicate's ThirdPersonPlayer and WarehouseTask to avoid shared input/job UI;
+   keep its PlayerInteraction and PlayerWallet enabled. In Inspector, give the
+   duplicate's PlayerParking a separate empty world Transform. Disable the original
+   PlayerInteraction while testing the duplicate, and change the camera's target
+   to the duplicate if testing its movement. Buying with either object must set
+   ownership only to that object; the other object's attempts must report This car
+   is already owned and leave its wallet unchanged. The automated check below
+   verifies reference ownership directly without needing two controlled players.
+8. Check movement, camera orbit/obstruction, Escape/click recapture, balance HUD,
+   warehouse objectives, and Console errors. Stop/restart with default settings:
+   balance returns to $0 and the car is for sale again.
+
+Repeatable component checks: outside Play, use Tools > Life Simulator > Validate
+dealership (reopens scene). It offers to save pending scene edits, then opens
+PrototypeMovement, checks failed purchases at $0/$100/$200, three warehouse
+payments, purchase event count/reentrant calls, exact charge, feedback, repeated
+purchase with sufficient money, different-player ownership, parking movement,
+OWNED activation, and another warehouse payment. It discards all test mutations
+by reopening the saved scene. This checks component methods, not simulated input
+or rendered appearance. The scene must have its normal $0 starting setting.
+Batch equivalent: Unity.exe -batchmode -nographics -projectPath <project path>
+-executeMethod LifeSimulator.Editor.DealershipPrototype.Validate -quit -logFile <log path>.
+
+Validation in this implementation session: runtime and Editor C# compiled against
+installed Unity 6000.0.84f1 assemblies using Roslyn, with no compile errors (Inspector-field CS0649 warnings and an expected
+unused development setting CS0169 warning in the release configuration). Scene references/hierarchy were checked offline.
+Unity batch execution exited 198: No valid Unity Editor license found. Therefore
+the integration checks and manual Play/visual checks have NOT run successfully;
+activate the local Editor license and run the checks above before accepting them.
